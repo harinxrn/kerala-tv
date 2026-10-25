@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense"></a>
-  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.5"><img src="https://img.shields.io/badge/release-v2.5-brightgreen" alt="Release: v2.5"></a>
+  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.5.2"><img src="https://img.shields.io/badge/release-v2.5.2-brightgreen" alt="Release: v2.5.2"></a>
   <img src="https://img.shields.io/badge/platform-Android%20TV-green" alt="Platform: Android TV">
   <img src="https://img.shields.io/badge/Android-5.0%2B-3DDC84" alt="Android 5.0+">
 </p>
@@ -76,14 +76,14 @@ The current logo images are supplied files that exist only in the built APK (bin
 
 ## Install
 
-Download `KeralaTv-v2.5.apk` from the [v2.5 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.5) and get it onto the TV any of these ways:
+Download `KeralaTv-v2.5.2.apk` from the [v2.5.2 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.5.2) and get it onto the TV any of these ways:
 
 - **File-transfer app (no cable needed):** send the APK from your phone or computer with an app like [LocalSend](https://localsend.org) or Send Files to TV — install the matching receiver app on the TV, send the file, then open it from the TV's file app and install. The TV will ask you to allow installs from that app the first time; say yes.
 - **ADB:**
 
 ```bash
 adb connect <tv-ip>:5555
-adb install KeralaTv-v2.5.apk
+adb install KeralaTv-v2.5.2.apk
 ```
 
 - **USB drive:** copy the APK to a USB stick, plug it into the TV, and open it from the TV's file app.
