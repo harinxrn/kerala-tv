@@ -367,10 +367,32 @@ public class MainActivity extends Activity {
             Toast.makeText(this, baseName(c.name) + " has no TV stream - YouTube only", Toast.LENGTH_LONG).show();
             return;
         }
+        AppData.youtubeMode = false;
         AppData.playList = list;
         AppData.playIndex = position;
         AppData.playTitle = currentSection;
         startActivity(new Intent(MainActivity.this, PlayerActivity.class));
+    }
+
+    /**
+     * v2.6: clone the news tiles into a YouTube playback queue, in home-grid
+     * order, with each tile's effective /live URL filled in. The players use
+     * it to zap between news channels with UP / DOWN without coming back to
+     * the grid. url keeps the tile's IPTV stream - the fallback.
+     */
+    private List<Channel> buildYtQueue(List<Channel> tiles) {
+        List<Channel> queue = new ArrayList<Channel>();
+        for (Channel c : tiles) {
+            Channel q = new Channel();
+            q.name = c.name;
+            q.url = c.url;
+            q.logo = c.logo;
+            q.groups.addAll(c.groups);
+            q.headers.putAll(c.headers);
+            q.ytLiveUrl = effectiveYt(c);
+            queue.add(q);
+        }
+        return queue;
     }
 
     // ---------- data loading ----------
@@ -603,6 +625,12 @@ public class MainActivity extends Activity {
     }
 
     private void playYouTube(final Channel c, final String liveUrl, final List<Channel> iptvList, final int iptvPos) {
+        // v2.6: hand both players the whole news queue, not just this one
+        // channel, so UP / DOWN can switch channels during playback.
+        final List<Channel> queue = buildYtQueue(iptvList);
+        AppData.ytQueue = queue;
+        AppData.ytIndex = iptvPos;
+        AppData.youtubeMode = true;
         Toast.makeText(this, "Finding the latest live for " + baseName(c.name) + "...", Toast.LENGTH_SHORT).show();
         new Thread(new Runnable() {
             @Override
@@ -625,15 +653,13 @@ public class MainActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            Channel sc = new Channel();
-                            sc.name = baseName(c.name) + " - YouTube Live";
-                            sc.url = hls;
-                            sc.logo = c.logo;
-                            sc.ytLiveUrl = liveUrl;
-                            List<Channel> single = new ArrayList<Channel>();
-                            single.add(sc);
-                            AppData.playList = single;
-                            AppData.playIndex = 0;
+                            // Native player, YouTube mode: it walks the
+                            // queue and resolves each channel on switch;
+                            // this first channel's stream is already here.
+                            queue.get(iptvPos).ytResolvedUrl = hls;
+                            AppData.ytQueue = queue;
+                            AppData.ytIndex = iptvPos;
+                            AppData.youtubeMode = true;
                             AppData.playTitle = SECTION_NEWS;
                             startActivity(new Intent(MainActivity.this, PlayerActivity.class));
                         }
@@ -646,7 +672,10 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (videoId != null) {
-                            AppData.playList = iptvList;
+                            // Embed player: AppData.playList stays the queue
+                            // itself - its entries carry the IPTV fallbacks
+                            // the failure dialog / age-gate switch point at.
+                            AppData.playList = queue;
                             AppData.playIndex = iptvPos;
                             AppData.playTitle = currentSection;
                             Intent i = new Intent(MainActivity.this, WebPlayerActivity.class);

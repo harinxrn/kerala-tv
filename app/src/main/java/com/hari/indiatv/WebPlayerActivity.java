@@ -21,6 +21,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -51,6 +52,17 @@ import java.util.Map;
  * the raw embed attempts and, instead of ending on the failure dialog,
  * the player announces it on the loading cover and switches to the
  * channel's IPTV stream by itself after a short pause.
+ *
+ * v2.6: channel zapping (Hari's ask, 2026-10-27). This player now receives
+ * the whole YT News queue (AppData.ytQueue): UP / DOWN switch to the
+ * previous / next news channel (its live is resolved fresh, native HLS
+ * first if that works), and the quality toggle moved to LEFT.
+ *
+ * v2.6.1 hotfix: on the TV the zapping keys never arrived - the WebView
+ * held focus and consumed every D-pad press for its own in-page focus
+ * movement (all Hari saw was a blue focus border). Keys are now claimed
+ * in dispatchKeyEvent before the WebView sees them, and the WebView is
+ * made non-focusable so it cannot steal them back.
  */
 public class WebPlayerActivity extends Activity {
 
@@ -73,6 +85,11 @@ public class WebPlayerActivity extends Activity {
     private WebView web;
     private View cover;
     private TextView statusView;
+    private TextView titleView;
+    private List<Channel> queue;
+    private int queueIndex = 0;
+    private boolean channelSwitching = false;
+    private int switchGeneration = 0;
     private boolean ageGate = false;
     private String videoId;
     private String originalUrl;
@@ -100,10 +117,26 @@ public class WebPlayerActivity extends Activity {
                 .getString("quality", "hd1080");
         cover = findViewById(R.id.cover);
         statusView = (TextView) findViewById(R.id.webStatus);
-        TextView titleView = (TextView) findViewById(R.id.webTitle);
+        titleView = (TextView) findViewById(R.id.webTitle);
         titleView.setText(title == null ? "" : title);
 
+        // v2.6: adopt the shared YouTube queue, if one was handed over.
+        if (AppData.ytQueue != null && !AppData.ytQueue.isEmpty()) {
+            queue = AppData.ytQueue;
+            queueIndex = AppData.ytIndex;
+            if (queueIndex < 0 || queueIndex >= queue.size()) queueIndex = 0;
+            Channel cur = currentChannel();
+            if (cur != null) {
+                if (originalUrl == null) originalUrl = cur.ytLiveUrl;
+                titleView.setText(baseTitle(cur));
+            }
+            syncAppData();
+        }
+
         web = (WebView) findViewById(R.id.webview);
+        // v2.6.1: never let the WebView hold focus (see class header).
+        web.setFocusable(false);
+        web.setFocusableInTouchMode(false);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -139,6 +172,157 @@ public class WebPlayerActivity extends Activity {
                     + "?autoplay=1&rel=0&playsinline=1&fs=1&controls=0&modestbranding=1&disablekb=1&iv_load_policy=3&vq=" + quality + "&origin=https://www.youtube-nocookie.com", h);
             scheduleProbes();
         }
+    }
+
+    // ---------- v2.6: channel queue / zapping ----------
+
+    private Channel currentChannel() {
+        if (queue == null || queueIndex < 0 || queueIndex >= queue.size()) return null;
+        return queue.get(queueIndex);
+    }
+
+    private static String baseTitle(Channel c) {
+        return MainActivity.baseName(c.name) + " - YouTube Live";
+    }
+
+    /** Keep the shared state pointing at the channel on screen. */
+    private void syncAppData() {
+        if (queue == null) return;
+        AppData.ytQueue = queue;
+        AppData.ytIndex = queueIndex;
+        AppData.youtubeMode = true;
+        AppData.playList = queue;
+        AppData.playIndex = queueIndex;
+        AppData.playTitle = MainActivity.SECTION_NEWS;
+    }
+
+    private boolean hasTvFallback() {
+        Channel c = currentChannel();
+        if (c != null) return c.url != null && c.url.length() > 0;
+        if (AppData.playList == null || AppData.playIndex < 0
+                || AppData.playIndex >= AppData.playList.size()) return false;
+        String u = AppData.playList.get(AppData.playIndex).url;
+        return u != null && u.length() > 0;
+    }
+
+    /** Leave YouTube and play the current channel's IPTV stream natively. */
+    private void openTvFallback() {
+        if (queue != null) {
+            AppData.playList = queue;
+            AppData.playIndex = queueIndex;
+        }
+        AppData.youtubeMode = false;
+        AppData.playTitle = MainActivity.SECTION_NEWS;
+        startActivity(new Intent(WebPlayerActivity.this, PlayerActivity.class));
+        finish();
+    }
+
+    /** Reset this player onto a new channel whose live id is already known. */
+    private void loadChannel(int idx, String newVideoId, String liveUrl) {
+        queueIndex = idx;
+        videoId = newVideoId;
+        originalUrl = liveUrl;
+        ageGate = false;
+        lastError = "";
+        settled = false;
+        channelSwitching = false;
+        syncAppData();
+        Channel c = currentChannel();
+        if (c != null) titleView.setText(baseTitle(c));
+        if (statusView != null) statusView.setText("Loading live...");
+        showCover();
+        if (web != null) web.stopLoading();
+        startAttempt(0);
+    }
+
+    /**
+     * UP / DOWN zapping: move to the next / previous queue channel that has
+     * a YouTube link, resolving its live fresh (native HLS first, then this
+     * embed, then its TV stream). The current video keeps playing behind
+     * the cover until the target is known to work; if it is not live, we
+     * stay on the current channel.
+     */
+    private void switchChannel(int delta) {
+        if (channelSwitching) return;
+        if (queue == null || queue.size() <= 1) {
+            Toast.makeText(this, "No other YouTube channel to switch to", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int target = -1;
+        for (int step = 1; step < queue.size(); step++) {
+            int cand = ((queueIndex + delta * step) % queue.size() + queue.size()) % queue.size();
+            Channel ch = queue.get(cand);
+            if (ch.ytLiveUrl != null && ch.ytLiveUrl.length() > 0) {
+                target = cand;
+                break;
+            }
+        }
+        if (target < 0) {
+            Toast.makeText(this, "No other channel has a YouTube live link", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final int targetIndex = target;
+        final Channel targetChannel = queue.get(target);
+        final int gen = ++switchGeneration;
+        channelSwitching = true;
+        // Pending probes belong to the old channel now - cancel them.
+        handler.removeCallbacksAndMessages(null);
+        showCover();
+        titleView.setText(baseTitle(targetChannel));
+        if (statusView != null) {
+            statusView.setText("Finding the latest live for "
+                    + MainActivity.baseName(targetChannel.name) + "...");
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String hls = YtResolver.resolveHls(targetChannel.ytLiveUrl);
+                if (hls != null && !YtResolver.isPlayableHls(hls)) {
+                    hls = YtResolver.resolveHls(targetChannel.ytLiveUrl);
+                    if (hls != null && !YtResolver.isPlayableHls(hls)) hls = null;
+                }
+                final String stream = hls;
+                final String vid = stream == null
+                        ? YtResolver.liveVideoId(targetChannel.ytLiveUrl) : null;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (gen != switchGeneration || isFinishing()) return;
+                        if (stream != null) {
+                            targetChannel.ytResolvedUrl = stream;
+                            queueIndex = targetIndex;
+                            syncAppData();
+                            channelSwitching = false;
+                            startActivity(new Intent(WebPlayerActivity.this, PlayerActivity.class));
+                            finish();
+                        } else if (vid != null) {
+                            loadChannel(targetIndex, vid, targetChannel.ytLiveUrl);
+                        } else if (targetChannel.url != null && targetChannel.url.length() > 0) {
+                            queueIndex = targetIndex;
+                            channelSwitching = false;
+                            Toast.makeText(WebPlayerActivity.this,
+                                    "YouTube live is offline - playing the TV stream",
+                                    Toast.LENGTH_LONG).show();
+                            openTvFallback();
+                        } else {
+                            channelSwitching = false;
+                            Toast.makeText(WebPlayerActivity.this,
+                                    MainActivity.baseName(targetChannel.name)
+                                            + " is not live on YouTube right now",
+                                    Toast.LENGTH_LONG).show();
+                            Channel cur = currentChannel();
+                            if (cur != null) titleView.setText(baseTitle(cur));
+                            if (settled) {
+                                hideCover();
+                            } else {
+                                if (statusView != null) statusView.setText("Loading live...");
+                                startAttempt(attempt);
+                            }
+                        }
+                    }
+                });
+            }
+        }).start();
     }
 
     private void scheduleProbes() {
@@ -209,7 +393,7 @@ public class WebPlayerActivity extends Activity {
      * and fired automatically by the wrapper's stall watchdog.
      */
     private void resync() {
-        if (web == null) return;
+        if (web == null || channelSwitching) return;
         showCover();
         if (attempt == 0) {
             web.evaluateJavascript("resyncLive()", null);
@@ -221,16 +405,18 @@ public class WebPlayerActivity extends Activity {
     }
 
     /**
-     * Quality toggle (v2.4), bound to the UP arrow while a YT News channel
-     * plays: switches 1080p <-> 720p, remembers the choice, and restarts
-     * playback at the new quality behind the loading cover.
+     * Quality toggle (v2.4), moved to the LEFT arrow in v2.6 (UP / DOWN are
+     * channel zapping now): switches 1080p <-> 720p, remembers the choice,
+     * and restarts playback at the new quality behind the loading cover.
      */
     private void toggleQuality() {
+        if (channelSwitching) return;
         quality = "hd1080".equals(quality) ? "hd720" : "hd1080";
         getSharedPreferences("webplayer", MODE_PRIVATE).edit()
                 .putString("quality", quality).apply();
         Toast.makeText(this, "Quality: " + ("hd1080".equals(quality) ? "1080p" : "720p"),
                 Toast.LENGTH_SHORT).show();
+        if (statusView != null) statusView.setText("Loading live...");
         showCover();
         startAttempt(0);
     }
@@ -247,16 +433,16 @@ public class WebPlayerActivity extends Activity {
         settled = true;
         ageGate = true;
         probeGen++; // pending probes are now stale - ignore them
-        if (AppData.playList != null && !AppData.playList.isEmpty()) {
+        if (hasTvFallback()) {
             if (statusView != null) {
                 statusView.setText("Age-restricted on YouTube - switching to TV stream...");
             }
+            final int gen = probeGen;
             handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    if (isFinishing()) return;
-                    startActivity(new Intent(WebPlayerActivity.this, PlayerActivity.class));
-                    finish();
+                    if (isFinishing() || gen != probeGen || !ageGate) return;
+                    openTvFallback();
                 }
             }, 2200);
         } else {
@@ -274,19 +460,20 @@ public class WebPlayerActivity extends Activity {
             msg = "YouTube won't play this channel inside the app"
                     + (lastError.length() > 0 ? " (error " + lastError + ")" : "") + ".";
         }
+        boolean tv = hasTvFallback();
+        if (tv) msg += "\n\nThe channel's TV stream still works:";
         AlertDialog.Builder b = new AlertDialog.Builder(this)
                 .setTitle("YouTube blocked in-app play")
-                .setMessage(msg + "\n\nThe channel's TV stream still works:")
-                .setPositiveButton("Play TV stream", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        if (AppData.playList != null && !AppData.playList.isEmpty()) {
-                            startActivity(new Intent(WebPlayerActivity.this, PlayerActivity.class));
-                        }
-                        finish();
-                    }
-                })
-                .setNeutralButton("Open YouTube app", new DialogInterface.OnClickListener() {
+                .setMessage(msg);
+        if (tv) {
+            b.setPositiveButton("Play TV stream", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    openTvFallback();
+                }
+            });
+        }
+        b.setNeutralButton("Open YouTube app", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         openOriginal();
@@ -311,7 +498,7 @@ public class WebPlayerActivity extends Activity {
                 // Quality, v2.4: the v2.3 720p lock looked too soft on
                 // Hari's big TV, so the default is 1080p now. The stall
                 // watchdog below still guards lip-sync at 1080p, and the
-                // UP arrow toggles 1080p/720p (persisted) if drift returns.
+                // LEFT arrow toggles 1080p/720p (persisted) if drift returns.
                 + "var Q='" + quality + "';"
                 + "function lockQ(){try{player.setPlaybackQuality(Q);}catch(x){}}"
                 + "function onYouTubeIframeAPIReady(){player=new YT.Player('p',{videoId:'" + vid + "',"
@@ -340,6 +527,7 @@ public class WebPlayerActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    if (channelSwitching) return; // the old channel, mid-zap
                     if (attempt == 0) onPlaying();
                 }
             });
@@ -360,7 +548,7 @@ public class WebPlayerActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if (settled) return;
+                    if (settled || channelSwitching) return;
                     lastError = String.valueOf(code);
                     startAttempt(attempt + 1);
                 }
@@ -388,10 +576,67 @@ public class WebPlayerActivity extends Activity {
         }
     }
 
+    /**
+     * v2.6.1: remote keys are claimed here, in dispatchKeyEvent, BEFORE the
+     * view hierarchy (the WebView) can consume them. In v2.6 they only
+     * existed in onKeyDown, which a focused WebView never lets fire for
+     * D-pad keys - it eats them for in-page focus movement instead.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (isRemoteKey(event.getKeyCode())) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                return handleKey(event.getKeyCode());
+            }
+            return true; // swallow the matching ACTION_UP as well
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private static boolean isRemoteKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_CHANNEL_UP:
+            case KeyEvent.KEYCODE_CHANNEL_DOWN:
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            // Quality toggle: 1080p <-> 720p.
+        // Backstop for when no view has focus; dispatchKeyEvent is the
+        // primary path and normally handles these first.
+        if (isRemoteKey(keyCode)) return handleKey(keyCode);
+        return super.onKeyDown(keyCode, event);
+    }
+
+    private boolean handleKey(int keyCode) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP
+                || keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
+            // v2.6: next YouTube news channel.
+            switchChannel(1);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN
+                || keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) {
+            // v2.6: previous YouTube news channel.
+            switchChannel(-1);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            // v2.6: quality toggle moved here (was UP before v2.6).
             toggleQuality();
             return true;
         }
@@ -402,7 +647,7 @@ public class WebPlayerActivity extends Activity {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
                 || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            if (web != null) {
+            if (web != null && !channelSwitching) {
                 if (attempt == 0) {
                     web.evaluateJavascript("togglePlay()", null);
                 } else {
@@ -412,7 +657,7 @@ public class WebPlayerActivity extends Activity {
             }
             return true;
         }
-        return super.onKeyDown(keyCode, event);
+        return false;
     }
 
     @Override

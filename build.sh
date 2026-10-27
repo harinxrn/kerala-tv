@@ -87,7 +87,7 @@ rm -rf "$B" && mkdir -p "$B/compiled" "$B/classes" "$B/dex" "$B/gen"
 aapt2 compile --dir "$PROJ/app/src/main/res" -o "$B/compiled/"
 sed 's|<manifest xmlns|<manifest package="com.hari.indiatv" xmlns|' "$PROJ/app/src/main/AndroidManifest.xml" > "$B/AndroidManifest.xml"
 aapt2 link -o "$B/base.apk" -I "$ANDROID_JAR" --manifest "$B/AndroidManifest.xml" \
-  --min-sdk-version 21 --target-sdk-version 34 --version-code 14 --version-name "2.5.2" \
+  --min-sdk-version 21 --target-sdk-version 34 --version-code 16 --version-name "2.6.1" \
   --java "$B/gen" "$B"/compiled/*.flat
 if [ -n "$JAVAC" ]; then
   "$JAVAC" -encoding UTF-8 -source 8 -target 8 -nowarn -bootclasspath "$ANDROID_JAR" -d "$B/classes" \
@@ -103,5 +103,5 @@ d8 --min-api 21 --lib "$ANDROID_JAR" --output "$B/dex" $(find "$B/classes" -name
 (cd "$B/dex" && aapt add ../base.apk classes.dex >/dev/null)
 zipalign -f -p 4 "$B/base.apk" "$B/india-tv-aligned.apk"
 apksigner sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
-  --out "$B/KeralaTv-v2.5.2.apk" "$B/india-tv-aligned.apk"
-apksigner verify "$B/KeralaTv-v2.5.2.apk" && echo "OK: $B/KeralaTv-v2.5.2.apk"
+  --out "$B/KeralaTv-v2.6.1.apk" "$B/india-tv-aligned.apk"
+apksigner verify "$B/KeralaTv-v2.6.1.apk" && echo "OK: $B/KeralaTv-v2.6.1.apk"

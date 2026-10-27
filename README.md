@@ -34,7 +34,9 @@ _Shown on a TV: the real home screen. Below: the home screen itself, and the pla
 - **New player UI** — gradient bottom panel with channel logo, LIVE badge, section + position ("1 of 11"), channel name and remote hints, loading label, and auto-fade.
 - **Video-only YouTube playback (v2.5)** — the in-app YouTube player runs with its controls fully hidden: no overlay chrome and no seek bar (a live's seek bar drops you into the rewind window - wrong for news). Failed embed attempts happen behind an opaque loading cover, so YouTube error pages are never shown.
 - **Age-gate auto-switch (v2.5.2)** — if YouTube age-restricts a channel's live stream, a signed-out in-app player can never play it, so the app detects the restriction, shows the reason on the loading screen, and switches to that channel's TV stream by itself. No error dialog to deal with.
-- **Quality + lip-sync controls (v2.4/v2.3)** — YouTube playback defaults to 1080p; UP arrow in the YouTube player toggles 1080p/720p (remembered). A watchdog compares the video clock with wall time and jumps back to the live edge if the picture drifts behind the sound; RIGHT arrow resyncs manually.
+- **Channel zapping (v2.6)** — while a YT News channel plays, UP / DOWN switch to the next / previous news channel without going back to the grid; each switch resolves that channel's current live fresh (native stream first, then the embed, then its TV stream). The YouTube quality toggle moved to LEFT.
+- **Remote-key hotfix (v2.6.1)** — in the YouTube player the WebView held focus and swallowed every D-pad press for its own in-page focus movement (visible only as a blue focus border), so the app never saw the keys. They are now intercepted before the WebView, which is also set non-focusable.
+- **Quality + lip-sync controls (v2.4/v2.3)** — YouTube playback defaults to 1080p; LEFT arrow in the YouTube player toggles 1080p/720p (remembered). A watchdog compares the video clock with wall time and jumps back to the live edge if the picture drifts behind the sound; RIGHT arrow resyncs manually.
 - **Logo (v2.5.1)** — a palm + retro TV mark. The icon/banner are supplied image files (binary, so they are not synced to this repo); `assets-img/make_img.py` generated the earlier v2.5 tile art and remains as a fallback if the images are missing.
 - **Streams with special headers just work** — per-stream User-Agent / Referer hints from the playlist (EXTVLCOPT) are passed to the player.
 - **Fast after first launch** — playlists are cached on the TV for a week; the Refresh button re-fetches them any time.
@@ -50,8 +52,9 @@ Note that iptv-org streams are free public links: availability varies and some a
 | OK | Open channel / pause in player / confirm |
 | Hold OK | Options for a YT News tile (YouTube live, TV stream, edit/reset link) |
 | Up / Down in player | Next / previous channel |
+| Up / Down in YouTube player | Next / previous news channel |
 | Left / Right in player | Show the player info panel |
-| Up in YouTube player | Toggle quality 1080p / 720p |
+| Left in YouTube player | Toggle quality 1080p / 720p |
 | Right in YouTube player | Resync to the live edge (lip-sync fix) |
 | Back | Exit player, back to grid |
 

@@ -18,6 +18,9 @@ public class Channel {
     /** For YouTube playback: the channel's permanent /live page (handle URL).
      *  Never a one-off video link - the current video id is resolved fresh. */
     public String ytLiveUrl;
+    /** Transient: the HLS manifest most recently resolved for ytLiveUrl.
+     *  Short-lived by nature - re-resolved whenever playback (re)starts. */
+    public String ytResolvedUrl;
 
     public void recomputeFlags() {
         for (String g : groups) {

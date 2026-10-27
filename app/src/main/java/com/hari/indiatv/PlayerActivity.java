@@ -1,6 +1,7 @@
 package com.hari.indiatv;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
@@ -44,6 +45,11 @@ public class PlayerActivity extends Activity {
     private boolean stopped = false;
     private boolean paused = false;
     private boolean resolving = false;
+    // v2.6: YouTube queue mode - list is AppData.ytQueue and each entry's
+    // stream is resolved fresh when zapped to, instead of being a fixed URL.
+    private boolean ytMode = false;
+    private boolean currentIptvFallback = false;
+    private int playGeneration = 0;
 
     private final Runnable hideOverlay = new Runnable() {
         @Override
@@ -57,8 +63,15 @@ public class PlayerActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_player);
-        list = AppData.playList;
-        index = AppData.playIndex;
+        if (AppData.youtubeMode && AppData.ytQueue != null && !AppData.ytQueue.isEmpty()) {
+            ytMode = true;
+            list = AppData.ytQueue;
+            index = AppData.ytIndex;
+        } else {
+            ytMode = false;
+            list = AppData.playList;
+            index = AppData.playIndex;
+        }
         if (list == null || list.isEmpty()) {
             finish();
             return;
@@ -100,7 +113,7 @@ public class PlayerActivity extends Activity {
         final Channel c = list.get(index);
         nowPlaying.setText(displayName(c.name));
         String section = AppData.playTitle != null && AppData.playTitle.length() > 0 ? AppData.playTitle : "Live TV";
-        String src = c.ytLiveUrl != null ? "YouTube Live" : "Live TV";
+        String src = ytMode && !currentIptvFallback ? "YouTube Live" : "Live TV";
         subInfo.setText(section + "  -  " + src + "  -  " + (index + 1) + " of " + list.size());
         ImageLoader.load(channelLogo, c.logo);
         panel.setVisibility(View.VISIBLE);
@@ -119,18 +132,42 @@ public class PlayerActivity extends Activity {
     private void play(int i) {
         if (list == null || list.isEmpty()) return;
         index = ((i % list.size()) + list.size()) % list.size();
+        if (ytMode) AppData.ytIndex = index; else AppData.playIndex = index;
         final Channel c = list.get(index);
+        final int gen = ++playGeneration;
         stopped = false;
         paused = false;
+        resolving = false;
+        currentIptvFallback = false;
         releasePlayer();
         showOverlay(4500);
         buffering.setVisibility(View.VISIBLE);
         bufferingLabel.setVisibility(View.VISIBLE);
         bufferingLabel.setText("Loading " + displayName(c.name) + "...");
+        if (ytMode) {
+            // YouTube queue: the stream URL is resolved per channel, fresh
+            // on every zap - only the first channel arrives pre-resolved.
+            if (c.ytResolvedUrl != null && c.ytResolvedUrl.length() > 0) {
+                startNative(c, c.ytResolvedUrl);
+            } else {
+                resolveYouTube(c, gen, "Finding the latest live for " + displayName(c.name) + "...");
+            }
+            return;
+        }
+        startNative(c, c.url);
+    }
+
+    private void startNative(final Channel c, final String streamUrl) {
+        if (streamUrl == null || streamUrl.length() == 0) {
+            buffering.setVisibility(View.GONE);
+            bufferingLabel.setVisibility(View.GONE);
+            Toast.makeText(this, "Could not play " + displayName(c.name), Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
             mp = new MediaPlayer();
             mp.setDisplay(holder);
-            mp.setDataSource(getApplicationContext(), Uri.parse(c.url), headersFor(c));
+            mp.setDataSource(getApplicationContext(), Uri.parse(streamUrl), headersFor(c));
             mp.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer player) {
@@ -148,9 +185,10 @@ public class PlayerActivity extends Activity {
                     bufferingLabel.setVisibility(View.GONE);
                     // YouTube live HLS urls expire / rotate when a stream
                     // restarts: re-resolve the channel's latest live first.
-                    if (c.ytLiveUrl != null && ytRetry < 2 && !resolving) {
+                    if (ytMode && !currentIptvFallback && c.ytLiveUrl != null && ytRetry < 2 && !resolving) {
                         ytRetry++;
-                        resolveYouTubeAgain(c);
+                        c.ytResolvedUrl = null;
+                        resolveYouTube(c, playGeneration, "Live link changed - finding the new stream...");
                         return true;
                     }
                     errorStreak++;
@@ -176,9 +214,10 @@ public class PlayerActivity extends Activity {
                 public void onCompletion(MediaPlayer player) {
                     // A live stream that "completes" has ended - for YouTube,
                     // that usually means a new live has already started.
-                    if (c.ytLiveUrl != null && ytRetry < 2 && !resolving) {
+                    if (ytMode && !currentIptvFallback && c.ytLiveUrl != null && ytRetry < 2 && !resolving) {
                         ytRetry++;
-                        resolveYouTubeAgain(c);
+                        c.ytResolvedUrl = null;
+                        resolveYouTube(c, playGeneration, "Live link changed - finding the new stream...");
                     }
                 }
             });
@@ -209,27 +248,49 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    /** Self-heal: get a fresh HLS for this channel's /live page and resume. */
-    private void resolveYouTubeAgain(final Channel c) {
+    /**
+     * Resolve one queue channel's current live and play it, in the app's
+     * usual order: native HLS first, then the in-app embed player, then the
+     * channel's IPTV stream. Used for the first channel, for every UP / DOWN
+     * zap, and to self-heal when a stream dies or rotates mid-play.
+     * gen guards against a slow resolve landing after the user zapped on.
+     */
+    private void resolveYouTube(final Channel c, final int gen, final String label) {
         resolving = true;
         buffering.setVisibility(View.VISIBLE);
         bufferingLabel.setVisibility(View.VISIBLE);
-        bufferingLabel.setText("Live link changed - finding the new stream...");
+        bufferingLabel.setText(label);
         new Thread(new Runnable() {
             @Override
             public void run() {
-                final String fresh = YtResolver.resolveHls(c.ytLiveUrl);
+                String fresh = YtResolver.resolveHls(c.ytLiveUrl);
+                if (fresh != null && !YtResolver.isPlayableHls(fresh)) {
+                    // Manifest was stale (stream restarted): once more.
+                    fresh = YtResolver.resolveHls(c.ytLiveUrl);
+                    if (fresh != null && !YtResolver.isPlayableHls(fresh)) fresh = null;
+                }
+                final String hls = fresh;
+                final String videoId = hls == null ? YtResolver.liveVideoId(c.ytLiveUrl) : null;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        if (gen != playGeneration || stopped || isFinishing()) return;
                         resolving = false;
-                        if (stopped) return;
-                        if (fresh != null && fresh.length() > 0) {
-                            c.url = fresh;
-                            play(index);
+                        if (hls != null) {
+                            c.ytResolvedUrl = hls;
+                            startNative(c, hls);
+                        } else if (videoId != null) {
+                            openWebPlayer(c, videoId);
+                        } else if (c.url != null && c.url.length() > 0) {
+                            currentIptvFallback = true;
+                            showOverlay(4500);
+                            Toast.makeText(PlayerActivity.this,
+                                    "YouTube live is offline - playing the TV stream",
+                                    Toast.LENGTH_LONG).show();
+                            startNative(c, c.url);
                         } else {
                             nowPlaying.setText(displayName(c.name));
-                            subInfo.setText("YouTube live is offline right now. Press Back and try the TV stream for this channel.");
+                            subInfo.setText("YouTube live is offline right now. Up / Down for another channel, or Back to go home.");
                             panel.setVisibility(View.VISIBLE);
                             handler.removeCallbacks(hideOverlay);
                             buffering.setVisibility(View.GONE);
@@ -239,6 +300,23 @@ public class PlayerActivity extends Activity {
                 });
             }
         }).start();
+    }
+
+    /** Hand this queue channel to the embed player, queue intact. */
+    private void openWebPlayer(final Channel c, final String videoId) {
+        AppData.ytQueue = list;
+        AppData.ytIndex = index;
+        AppData.youtubeMode = true;
+        AppData.playList = list;
+        AppData.playIndex = index;
+        AppData.playTitle = MainActivity.SECTION_NEWS;
+        Intent i = new Intent(PlayerActivity.this, WebPlayerActivity.class);
+        i.putExtra(WebPlayerActivity.EXTRA_VIDEO_ID, videoId);
+        i.putExtra(WebPlayerActivity.EXTRA_TITLE, displayName(c.name) + " - YouTube Live");
+        i.putExtra(WebPlayerActivity.EXTRA_ORIGINAL_URL, c.ytLiveUrl);
+        stopped = true;
+        startActivity(i);
+        finish();
     }
 
     private void fitSurface(int vw, int vh) {
