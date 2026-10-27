@@ -8,9 +8,13 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense"></a>
-  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.5.2"><img src="https://img.shields.io/badge/release-v2.5.2-brightgreen" alt="Release: v2.5.2"></a>
+  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.6.1"><img src="https://img.shields.io/badge/release-v2.6.1-brightgreen" alt="Release: v2.6.1"></a>
   <img src="https://img.shields.io/badge/platform-Android%20TV-green" alt="Platform: Android TV">
   <img src="https://img.shields.io/badge/Android-5.0%2B-3DDC84" alt="Android 5.0+">
+</p>
+
+<p align="center">
+  <a href="https://github.com/harinxrn/kerala-tv/releases/download/v2.6.1/KeralaTv-v2.6.1.apk"><img src="https://img.shields.io/badge/Download%20APK-v2.6.1-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Download Kerala Tv v2.6.1 APK"></a>
 </p>
 
 A minimal Android TV app for watching live Malayalam TV, built for the remote first. Channels come from YouTube Lives and the free [iptv-org](https://github.com/iptv-org/iptv) playlists and refresh inside the app, so the lists stay current without an app update.
@@ -79,14 +83,14 @@ The current logo images are supplied files that exist only in the built APK (bin
 
 ## Install
 
-Download `KeralaTv-v2.5.2.apk` from the [v2.5.2 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.5.2) and get it onto the TV any of these ways:
+Download `KeralaTv-v2.6.1.apk` from the [v2.6.1 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.6.1) and get it onto the TV any of these ways:
 
 - **File-transfer app (no cable needed):** send the APK from your phone or computer with an app like [LocalSend](https://localsend.org) or Send Files to TV — install the matching receiver app on the TV, send the file, then open it from the TV's file app and install. The TV will ask you to allow installs from that app the first time; say yes.
 - **ADB:**
 
 ```bash
 adb connect <tv-ip>:5555
-adb install KeralaTv-v2.5.2.apk
+adb install KeralaTv-v2.6.1.apk
 ```
 
 - **USB drive:** copy the APK to a USB stick, plug it into the TV, and open it from the TV's file app.
