@@ -17,6 +17,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -86,6 +87,7 @@ public class WebPlayerActivity extends Activity {
     private View cover;
     private TextView statusView;
     private TextView titleView;
+    private ImageView webLogoView;
     private List<Channel> queue;
     private int queueIndex = 0;
     private boolean channelSwitching = false;
@@ -118,6 +120,7 @@ public class WebPlayerActivity extends Activity {
         cover = findViewById(R.id.cover);
         statusView = (TextView) findViewById(R.id.webStatus);
         titleView = (TextView) findViewById(R.id.webTitle);
+        webLogoView = (ImageView) findViewById(R.id.webLogo);
         titleView.setText(title == null ? "" : title);
 
         // v2.6: adopt the shared YouTube queue, if one was handed over.
@@ -129,6 +132,7 @@ public class WebPlayerActivity extends Activity {
             if (cur != null) {
                 if (originalUrl == null) originalUrl = cur.ytLiveUrl;
                 titleView.setText(baseTitle(cur));
+                ImageLoader.load(webLogoView, cur.logo);
             }
             syncAppData();
         }
@@ -229,6 +233,7 @@ public class WebPlayerActivity extends Activity {
         syncAppData();
         Channel c = currentChannel();
         if (c != null) titleView.setText(baseTitle(c));
+        if (c != null) ImageLoader.load(webLogoView, c.logo);
         if (statusView != null) statusView.setText("Loading live...");
         showCover();
         if (web != null) web.stopLoading();
@@ -269,6 +274,7 @@ public class WebPlayerActivity extends Activity {
         handler.removeCallbacksAndMessages(null);
         showCover();
         titleView.setText(baseTitle(targetChannel));
+        ImageLoader.load(webLogoView, targetChannel.logo);
         if (statusView != null) {
             statusView.setText("Finding the latest live for "
                     + MainActivity.baseName(targetChannel.name) + "...");
