@@ -8,13 +8,13 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense"></a>
-  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.6.1"><img src="https://img.shields.io/badge/release-v2.6.1-brightgreen" alt="Release: v2.6.1"></a>
+  <a href="https://github.com/harinxrn/kerala-tv/releases/tag/v2.7.0"><img src="https://img.shields.io/badge/release-v2.7.0-brightgreen" alt="Release: v2.7.0"></a>
   <img src="https://img.shields.io/badge/platform-Android%20TV-green" alt="Platform: Android TV">
   <img src="https://img.shields.io/badge/Android-5.0%2B-3DDC84" alt="Android 5.0+">
 </p>
 
 <p align="center">
-  <a href="https://github.com/harinxrn/kerala-tv/releases/download/v2.6.1/KeralaTv-v2.6.1.apk"><img src="https://img.shields.io/badge/Download%20APK-v2.6.1-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Download Kerala Tv v2.6.1 APK"></a>
+  <a href="https://github.com/harinxrn/kerala-tv/releases/download/v2.7.0/KeralaTv-v2.7.0.apk"><img src="https://img.shields.io/badge/Download%20APK-v2.7.0-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Download Kerala Tv v2.7.0 APK"></a>
 </p>
 
 A minimal Android TV app for watching live Malayalam TV, built for the remote first. Channels come from YouTube Lives and the free [iptv-org](https://github.com/iptv-org/iptv) playlists and refresh inside the app, so the lists stay current without an app update.
@@ -40,6 +40,7 @@ _Shown on a TV: the real home screen. Below: the home screen itself, and the pla
 - **Age-gate auto-switch (v2.5.2)** — if YouTube age-restricts a channel's live stream, a signed-out in-app player can never play it, so the app detects the restriction, shows the reason on the loading screen, and switches to that channel's TV stream by itself. No error dialog to deal with.
 - **Channel zapping (v2.6)** — while a YT News channel plays, UP / DOWN switch to the next / previous news channel without going back to the grid; each switch resolves that channel's current live fresh (native stream first, then the embed, then its TV stream). The YouTube quality toggle moved to LEFT.
 - **Remote-key hotfix (v2.6.1)** — in the YouTube player the WebView held focus and swallowed every D-pad press for its own in-page focus movement (visible only as a blue focus border), so the app never saw the keys. They are now intercepted before the WebView, which is also set non-focusable.
+- **Channel logo on switching (v2.7.0)** — the YouTube player's switching and loading cover now shows the channel's logo beside its name, matching the native player.
 - **Quality + lip-sync controls (v2.4/v2.3)** — YouTube playback defaults to 1080p; LEFT arrow in the YouTube player toggles 1080p/720p (remembered). A watchdog compares the video clock with wall time and jumps back to the live edge if the picture drifts behind the sound; RIGHT arrow resyncs manually.
 - **Logo (v2.5.1)** — a palm + retro TV mark. The icon/banner are supplied image files (binary, so they are not synced to this repo); `assets-img/make_img.py` generated the earlier v2.5 tile art and remains as a fallback if the images are missing.
 - **Streams with special headers just work** — per-stream User-Agent / Referer hints from the playlist (EXTVLCOPT) are passed to the player.
@@ -83,14 +84,14 @@ The current logo images are supplied files that exist only in the built APK (bin
 
 ## Install
 
-Download `KeralaTv-v2.6.1.apk` from the [v2.6.1 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.6.1) and get it onto the TV any of these ways:
+Download `KeralaTv-v2.7.0.apk` from the [v2.7.0 release](https://github.com/harinxrn/kerala-tv/releases/tag/v2.7.0) and get it onto the TV any of these ways:
 
 - **File-transfer app (no cable needed):** send the APK from your phone or computer with an app like [LocalSend](https://localsend.org) or Send Files to TV — install the matching receiver app on the TV, send the file, then open it from the TV's file app and install. The TV will ask you to allow installs from that app the first time; say yes.
 - **ADB:**
 
 ```bash
 adb connect <tv-ip>:5555
-adb install KeralaTv-v2.6.1.apk
+adb install KeralaTv-v2.7.0.apk
 ```
 
 - **USB drive:** copy the APK to a USB stick, plug it into the TV, and open it from the TV's file app.
