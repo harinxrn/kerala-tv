@@ -99,9 +99,9 @@ else
   echo "No javac and no ECJ jar at $ECJ_JAR - install a full JDK 17 or set ECJ_JAR." >&2
   exit 1
 fi
-d8 --min-api 21 --lib "$ANDROID_JAR" --output "$B/dex" $(find "$B/classes" -name "*.class" | tr '\n' ' ')
+"$JAVA" -cp "$BT/lib/d8.jar" com.android.tools.r8.D8 --min-api 21 --lib "$ANDROID_JAR" --output "$B/dex" $(find "$B/classes" -name "*.class" | tr '\n' ' ')
 (cd "$B/dex" && aapt add ../base.apk classes.dex >/dev/null)
 zipalign -f -p 4 "$B/base.apk" "$B/india-tv-aligned.apk"
-apksigner sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+"$JAVA" -jar "$BT/lib/apksigner.jar" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --out "$B/KeralaTv-v2.6.1.apk" "$B/india-tv-aligned.apk"
-apksigner verify "$B/KeralaTv-v2.6.1.apk" && echo "OK: $B/KeralaTv-v2.6.1.apk"
+"$JAVA" -jar "$BT/lib/apksigner.jar" verify "$B/KeralaTv-v2.6.1.apk" && echo "OK: $B/KeralaTv-v2.6.1.apk"
